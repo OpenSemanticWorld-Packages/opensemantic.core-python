@@ -2546,7 +2546,6 @@ class ProjectTypeDeprecated(str, Enum):
 class WeightedSum(OswBaseModel):
     class Config:
         schema_extra = {
-            "_allOf": [{"$ref": "QuantityProperty.json"}],
             "title": "weighted sum",
             "title*": {"de": "Gewichtete Summe"},
             "_description": "weighted with probability of successful funding",
@@ -2914,7 +2913,6 @@ class YearlyBudget(OswBaseModel):
     )
     yearly_budget_sum_weighted: WeightedSum | None = Field(
         None,
-        field_allOf=[{"$ref": "QuantityProperty.json"}],
         field_description="weighted with probability of successful funding",
         field_description_={"de": "gewichtet mit Erfolgswahrscheinlichkeit"},
         options={"disable_collapse": True, "disable_properties": True, "compact": True},

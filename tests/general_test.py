@@ -1,4 +1,5 @@
 import opensemantic.core
+import opensemantic.core.v1
 
 
 def test_opensemantic():
@@ -11,7 +12,15 @@ def test_opensemantic():
     # Check if the instance is created successfully
     assert isinstance(
         model, opensemantic.core.Entity
-    ), "Failed to create an instance of OswBaseModel"
+    ), "Failed to create an instance of Entity"
+
+    # repeaet for v1
+    model_v1 = opensemantic.core.v1.Entity(
+        label=[opensemantic.core.v1.Label(text="Test Entity")],
+    )
+    assert isinstance(
+        model_v1, opensemantic.core.v1.Entity
+    ), "Failed to create an instance of Entity in v1"
 
 
 if __name__ == "__main__":
