@@ -11,72 +11,6 @@ from pydantic.v1 import Field, PositiveFloat, conint, constr
 #   filename:  Category.json
 
 
-class LangCode(str, Enum):
-    en = "en"
-    de = "de"
-
-
-class LabelItem(OswBaseModel):
-    class Config:
-        schema_extra = {
-            "@context": {
-                "rdf": "http://www.w3.org/2000/01/rdf-schema#",
-                "text": {"@id": "@value"},
-                "lang": {"@id": "@language"},
-            },
-            "title": "Label",
-            "title*": {"de": "Bezeichnung"},
-            "eval_template": [
-                {"type": "wikitext", "mode": "store", "value": "{{{text}}}@{{{lang}}}"}
-            ],
-        }
-
-    text: constr(min_length=1) = Field(
-        ...,
-        options={
-            "input_width": "800px",
-            "inputAttributes": {"placeholder": "Title of the entry"},
-            "inputAttributes*": {"de": {"placeholder": "Titel dieses Eintrags"}},
-        },
-        title="Text",
-        title_={"de": "Text"},
-    )
-    lang: LangCode | None = Field(
-        LangCode.en,
-        default_={"en": "en", "de": "de"},
-        options={"input_width": "100px"},
-        title="Lang code",
-        title_={"de": "Sprache"},
-    )
-
-
-class DescriptionItem(OswBaseModel):
-    class Config:
-        schema_extra = {
-            "@context": {
-                "rdf": "http://www.w3.org/2000/01/rdf-schema#",
-                "text": {"@id": "@value"},
-                "lang": {"@id": "@language"},
-            },
-            "title": "Description",
-            "title*": {"de": "Beschreibung"},
-            "eval_template": [
-                {"type": "wikitext", "mode": "store", "value": "{{{text}}}@{{{lang}}}"}
-            ],
-        }
-
-    text: constr(min_length=1) = Field(
-        ..., options={"input_width": "800px"}, title="Text", title_={"de": "Text"}
-    )
-    lang: LangCode | None = Field(
-        LangCode.en,
-        default_={"en": "en", "de": "de"},
-        options={"input_width": "100px"},
-        title="Lang code",
-        title_={"de": "Sprache"},
-    )
-
-
 class NumberType(str, Enum):
     """
     Type of number: whole numbers or decimals
@@ -123,6 +57,11 @@ class Format(str, Enum):
     """
 
 
+class LangCode(str, Enum):
+    en = "en"
+    de = "de"
+
+
 class ShortName(OswBaseModel):
     class Config:
         schema_extra = {
@@ -131,8 +70,8 @@ class ShortName(OswBaseModel):
                 "text": {"@id": "@value"},
                 "lang": {"@id": "@language"},
             },
-            "title": "Short name",
-            "title*": {"de": "Kurzname"},
+            "title": "ShortName",
+            "title*": {"de": "Kurzname", "en": "Short name"},
             "eval_template": [
                 {"type": "wikitext", "mode": "store", "value": "{{{text}}}@{{{lang}}}"}
             ],
@@ -220,6 +159,9 @@ class Label(OswBaseModel):
             },
             "title": "Label",
             "title*": {"de": "Bezeichnung"},
+            "eval_template": [
+                {"type": "wikitext", "mode": "store", "value": "{{{text}}}@{{{lang}}}"}
+            ],
         }
 
     text: constr(min_length=1) = Field(
@@ -251,6 +193,9 @@ class Description(OswBaseModel):
             },
             "title": "Description",
             "title*": {"de": "Beschreibung"},
+            "eval_template": [
+                {"type": "wikitext", "mode": "store", "value": "{{{text}}}@{{{lang}}}"}
+            ],
         }
 
     text: constr(min_length=1) = Field(
@@ -263,18 +208,6 @@ class Description(OswBaseModel):
         title="Lang code",
         title_={"de": "Sprache"},
     )
-
-
-class Label1(LabelItem):
-    pass
-
-
-class Label2(LabelItem):
-    pass
-
-
-class Label3(LabelItem):
-    pass
 
 
 class MetaModel(OswBaseModel):
@@ -421,7 +354,7 @@ class NumberProperty(OswBaseModel):
     """
     Technical name / keyword. Should be lowercase without spaces and special chars except underscore
     """
-    label: list[LabelItem] | None = Field(
+    label: list[Label] | None = Field(
         None,
         description_={"de": "Mindestens eine Bezeichnung ist erforderlich."},
         eval_template=[
@@ -430,13 +363,7 @@ class NumberProperty(OswBaseModel):
                 "mode": "render",
                 "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
                 "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
-            {
-                "type": "mustache-wikitext",
-                "mode": "render",
-                "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
-                "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
+            }
         ],
         min_items=1,
         options={"grid_columns": 12},
@@ -446,7 +373,7 @@ class NumberProperty(OswBaseModel):
     """
     At least one label is required.
     """
-    description: list[DescriptionItem] | None = Field(
+    description: list[Description] | None = Field(
         None,
         eval_template={
             "type": "mustache-wikitext",
@@ -466,24 +393,6 @@ class NumberProperty(OswBaseModel):
             "autocomplete": {
                 "query": "[[Category:Property]]|?HasLabel=label|?HasDescription=description|?HasRange=range",
                 "field_maps": [
-                    {
-                        "source_path": "$",
-                        "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(label)",
-                    },
-                    {
-                        "source_path": "$",
-                        "$comment": "multilang properties are normalized",
-                        "template_multilang": '[{{#each result.printouts.description}}{"text": "{{{Text.item.[0]}}}", "lang": "{{{[Language code].item.[0]}}}"}{{/each}}]',
-                        "template": '[{{#each result.printouts.description}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(description)",
-                    },
-                    {
-                        "__disabled__source_path": "$..range..fulltext",
-                        "source_path": "$",
-                        "template": '["{{{result.printouts.range.[0].fulltext}}}"]',
-                        "target_path": "$(range)",
-                    },
                     {
                         "source_path": "$",
                         "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
@@ -563,19 +472,9 @@ class NumberProperty(OswBaseModel):
         NumberType.number,
         description_={"de": "Zahlentyp: ganze Zahlen oder Dezimalzahlen"},
         options={
-            "enum_titles": [
-                "Decimals (number)",
-                "Whole numbers (integer)",
-                "Decimals (number)",
-                "Whole numbers (integer)",
-            ],
+            "enum_titles": ["Decimals (number)", "Whole numbers (integer)"],
             "enum_titles*": {
-                "de": [
-                    "Dezimalzahlen (number)",
-                    "Ganze Zahlen (integer)",
-                    "Dezimalzahlen (number)",
-                    "Ganze Zahlen (integer)",
-                ]
+                "de": ["Dezimalzahlen (number)", "Ganze Zahlen (integer)"]
             },
         },
         title="Number Type",
@@ -684,7 +583,7 @@ class TextProperty(OswBaseModel):
     """
     Technical name / keyword. Should be lowercase without spaces and special chars except underscore
     """
-    label: list[LabelItem] | None = Field(
+    label: list[Label] | None = Field(
         None,
         description_={"de": "Mindestens eine Bezeichnung ist erforderlich."},
         eval_template=[
@@ -693,13 +592,7 @@ class TextProperty(OswBaseModel):
                 "mode": "render",
                 "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
                 "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
-            {
-                "type": "mustache-wikitext",
-                "mode": "render",
-                "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
-                "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
+            }
         ],
         min_items=1,
         options={"grid_columns": 12},
@@ -709,7 +602,7 @@ class TextProperty(OswBaseModel):
     """
     At least one label is required.
     """
-    description: list[DescriptionItem] | None = Field(
+    description: list[Description] | None = Field(
         None,
         eval_template={
             "type": "mustache-wikitext",
@@ -729,24 +622,6 @@ class TextProperty(OswBaseModel):
             "autocomplete": {
                 "query": "[[Category:Property]]|?HasLabel=label|?HasDescription=description|?HasRange=range",
                 "field_maps": [
-                    {
-                        "source_path": "$",
-                        "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(label)",
-                    },
-                    {
-                        "source_path": "$",
-                        "$comment": "multilang properties are normalized",
-                        "template_multilang": '[{{#each result.printouts.description}}{"text": "{{{Text.item.[0]}}}", "lang": "{{{[Language code].item.[0]}}}"}{{/each}}]',
-                        "template": '[{{#each result.printouts.description}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(description)",
-                    },
-                    {
-                        "__disabled__source_path": "$..range..fulltext",
-                        "source_path": "$",
-                        "template": '["{{{result.printouts.range.[0].fulltext}}}"]',
-                        "target_path": "$(range)",
-                    },
                     {
                         "source_path": "$",
                         "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
@@ -834,21 +709,9 @@ class TextProperty(OswBaseModel):
                 "Email (email)",
                 "URI (uri)",
                 "Color (color)",
-                "Date (date)",
-                "Date and time (date-time)",
-                "Time (time)",
-                "Email (email)",
-                "URI (uri)",
-                "Color (color)",
             ],
             "enum_titles*": {
                 "de": [
-                    "Datum (date)",
-                    "Datum und Uhrzeit (date-time)",
-                    "Uhrzeit (time)",
-                    "E-Mail (email)",
-                    "URI (uri)",
-                    "Farbe (color)",
                     "Datum (date)",
                     "Datum und Uhrzeit (date-time)",
                     "Uhrzeit (time)",
@@ -944,7 +807,7 @@ class BooleanProperty(OswBaseModel):
     """
     Technical name / keyword. Should be lowercase without spaces and special chars except underscore
     """
-    label: list[LabelItem] | None = Field(
+    label: list[Label] | None = Field(
         None,
         description_={"de": "Mindestens eine Bezeichnung ist erforderlich."},
         eval_template=[
@@ -953,13 +816,7 @@ class BooleanProperty(OswBaseModel):
                 "mode": "render",
                 "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
                 "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
-            {
-                "type": "mustache-wikitext",
-                "mode": "render",
-                "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
-                "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
+            }
         ],
         min_items=1,
         options={"grid_columns": 12},
@@ -969,7 +826,7 @@ class BooleanProperty(OswBaseModel):
     """
     At least one label is required.
     """
-    description: list[DescriptionItem] | None = Field(
+    description: list[Description] | None = Field(
         None,
         eval_template={
             "type": "mustache-wikitext",
@@ -989,24 +846,6 @@ class BooleanProperty(OswBaseModel):
             "autocomplete": {
                 "query": "[[Category:Property]]|?HasLabel=label|?HasDescription=description|?HasRange=range",
                 "field_maps": [
-                    {
-                        "source_path": "$",
-                        "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(label)",
-                    },
-                    {
-                        "source_path": "$",
-                        "$comment": "multilang properties are normalized",
-                        "template_multilang": '[{{#each result.printouts.description}}{"text": "{{{Text.item.[0]}}}", "lang": "{{{[Language code].item.[0]}}}"}{{/each}}]',
-                        "template": '[{{#each result.printouts.description}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(description)",
-                    },
-                    {
-                        "__disabled__source_path": "$..range..fulltext",
-                        "source_path": "$",
-                        "template": '["{{{result.printouts.range.[0].fulltext}}}"]',
-                        "target_path": "$(range)",
-                    },
                     {
                         "source_path": "$",
                         "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
@@ -1130,7 +969,7 @@ class LinkProperty(OswBaseModel):
     """
     Technical name / keyword. Should be lowercase without spaces and special chars except underscore
     """
-    label: list[LabelItem] | None = Field(
+    label: list[Label] | None = Field(
         None,
         description_={"de": "Mindestens eine Bezeichnung ist erforderlich."},
         eval_template=[
@@ -1139,13 +978,7 @@ class LinkProperty(OswBaseModel):
                 "mode": "render",
                 "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
                 "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
-            {
-                "type": "mustache-wikitext",
-                "mode": "render",
-                "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
-                "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
+            }
         ],
         min_items=1,
         options={"grid_columns": 12},
@@ -1155,7 +988,7 @@ class LinkProperty(OswBaseModel):
     """
     At least one label is required.
     """
-    description: list[DescriptionItem] | None = Field(
+    description: list[Description] | None = Field(
         None,
         eval_template={
             "type": "mustache-wikitext",
@@ -1175,24 +1008,6 @@ class LinkProperty(OswBaseModel):
             "autocomplete": {
                 "query": "[[Category:Property]]|?HasLabel=label|?HasDescription=description|?HasRange=range",
                 "field_maps": [
-                    {
-                        "source_path": "$",
-                        "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(label)",
-                    },
-                    {
-                        "source_path": "$",
-                        "$comment": "multilang properties are normalized",
-                        "template_multilang": '[{{#each result.printouts.description}}{"text": "{{{Text.item.[0]}}}", "lang": "{{{[Language code].item.[0]}}}"}{{/each}}]',
-                        "template": '[{{#each result.printouts.description}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(description)",
-                    },
-                    {
-                        "__disabled__source_path": "$..range..fulltext",
-                        "source_path": "$",
-                        "template": '["{{{result.printouts.range.[0].fulltext}}}"]',
-                        "target_path": "$(range)",
-                    },
                     {
                         "source_path": "$",
                         "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
@@ -1334,7 +1149,7 @@ class ComplexProperty(OswBaseModel):
     """
     Technical name / keyword. Should be lowercase without spaces and special chars except underscore
     """
-    label: list[LabelItem] | None = Field(
+    label: list[Label] | None = Field(
         None,
         description_={"de": "Mindestens eine Bezeichnung ist erforderlich."},
         eval_template=[
@@ -1343,13 +1158,7 @@ class ComplexProperty(OswBaseModel):
                 "mode": "render",
                 "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
                 "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
-            {
-                "type": "mustache-wikitext",
-                "mode": "render",
-                "$comment": "Displays value according to user language with eng as fallback option. Note: {{=<% %>=}} changes mustache expression from {{..}} to <% %> for mixing with wikitext templates",
-                "value": "{{=<% %>=}} {{#switch:{{USERLANGUAGECODE}} <%#label%> | {{#ifeq: <%lang%>|en|#default|<%lang%>}} = <%text%> <%/label%> }}",
-            },
+            }
         ],
         min_items=1,
         options={"grid_columns": 12},
@@ -1359,7 +1168,7 @@ class ComplexProperty(OswBaseModel):
     """
     At least one label is required.
     """
-    description: list[DescriptionItem] | None = Field(
+    description: list[Description] | None = Field(
         None,
         eval_template={
             "type": "mustache-wikitext",
@@ -1379,24 +1188,6 @@ class ComplexProperty(OswBaseModel):
             "autocomplete": {
                 "query": "[[Category:Property]]|?HasLabel=label|?HasDescription=description|?HasRange=range",
                 "field_maps": [
-                    {
-                        "source_path": "$",
-                        "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(label)",
-                    },
-                    {
-                        "source_path": "$",
-                        "$comment": "multilang properties are normalized",
-                        "template_multilang": '[{{#each result.printouts.description}}{"text": "{{{Text.item.[0]}}}", "lang": "{{{[Language code].item.[0]}}}"}{{/each}}]',
-                        "template": '[{{#each result.printouts.description}}{"text": "{{{.}}}"}{{/each}}]',
-                        "target_path": "$(description)",
-                    },
-                    {
-                        "__disabled__source_path": "$..range..fulltext",
-                        "source_path": "$",
-                        "template": '["{{{result.printouts.range.[0].fulltext}}}"]',
-                        "target_path": "$(range)",
-                    },
                     {
                         "source_path": "$",
                         "template": '[{{#each result.printouts.label}}{"text": "{{{.}}}"}{{/each}}]',
@@ -1786,7 +1577,7 @@ class Entity(OswBaseModel):
     """
     Technical / Machine compatible name
     """
-    label: list[LabelItem] = Field(
+    label: list[Label] = Field(
         ...,
         description_={"de": "Mindestens eine Bezeichnung ist erforderlich."},
         eval_template=[
@@ -1825,7 +1616,7 @@ class Entity(OswBaseModel):
         title="Query label",
         title_={"de": "Abfrage-Bezeichnung"},
     )
-    description: list[DescriptionItem] | None = Field(
+    description: list[Description] | None = Field(
         None,
         eval_template={
             "type": "mustache-wikitext",
@@ -1986,7 +1777,7 @@ class ObjectStatement(OswBaseModel):
 
     rdf_type: Any | None = Field("rdf:Statement", options={"hidden": True})
     uuid: UUID = Field(default_factory=uuid4, options={"hidden": True}, title="UUID")
-    label: list[Label1] | None = Field(
+    label: list[Label] | None = Field(
         None, options={"collapsed": True, "grid_columns": 12}, title="Label"
     )
     """
@@ -2058,7 +1849,7 @@ class DataStatement(OswBaseModel):
 
     rdf_type: Any | None = Field("rdf:Statement", options={"hidden": True})
     uuid: UUID = Field(default_factory=uuid4, options={"hidden": True}, title="UUID")
-    label: list[Label2] | None = Field(
+    label: list[Label] | None = Field(
         None, options={"collapsed": True, "grid_columns": 12}, title="Label"
     )
     """
@@ -2127,7 +1918,7 @@ class QuantityStatement(OswBaseModel):
 
     rdf_type: Any | None = Field("rdf:Statement", options={"hidden": True})
     uuid: UUID = Field(default_factory=uuid4, options={"hidden": True}, title="UUID")
-    label: list[Label3] | None = Field(
+    label: list[Label] | None = Field(
         None, options={"collapsed": True, "grid_columns": 12}, title="Label"
     )
     """
@@ -2169,7 +1960,7 @@ class QuantityStatement(OswBaseModel):
             "autocomplete": {
                 "query": "[[-HasInputUnit::{{$(quantity)}}]][[Display_title_of::like:*{{_user_input}}*]]|?Display_title_of=label",
                 "render_template": {
-                    "type": ["handlebars", "handlebars"],
+                    "type": ["handlebars"],
                     "value": "{{result.printouts.label.[0]}}",
                 },
                 "field_maps": [
@@ -2177,12 +1968,7 @@ class QuantityStatement(OswBaseModel):
                         "source_path": "$",
                         "template": "{{{result.printouts.label.[0]}}}",
                         "target_path": "$(unit_symbol)",
-                    },
-                    {
-                        "source_path": "$",
-                        "template": "{{{result.printouts.label.[0]}}}",
-                        "target_path": "$(unit_symbol)",
-                    },
+                    }
                 ],
             },
         },
