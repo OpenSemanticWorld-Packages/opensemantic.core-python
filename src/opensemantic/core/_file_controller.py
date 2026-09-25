@@ -8,7 +8,7 @@ registers the controllers, which is what makes them findable through
 from io import BytesIO
 from typing import Any, List, Optional
 
-from pydantic import ConfigDict, PrivateAttr
+from pydantic import ConfigDict, Field
 
 from opensemantic.core._file_controller_mixin import (  # noqa: F401 (re-export)
     FileControllerMixin,
@@ -44,7 +44,8 @@ class InMemoryController(InMemoryControllerMixin, _LocalFile):
 
     label: Optional[List[_Label]] = [_Label(text="Unnamed stream")]
 
-    _stream: Any = PrivateAttr(default_factory=BytesIO)
+    stream: Any = Field(default_factory=BytesIO)
+    """The buffer holding the content, byte oriented to match get/put."""
 
 
 class RemoteFileController(RemoteFileControllerMixin, _RemoteFile):

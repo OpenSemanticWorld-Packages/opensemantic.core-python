@@ -13,7 +13,7 @@ materialize a file whose controller lives elsewhere.
 
 import shutil
 from abc import abstractmethod
-from io import BytesIO, TextIOBase
+from io import TextIOBase
 from pathlib import Path
 from typing import IO, Any, ClassVar, Dict, Optional
 
@@ -120,13 +120,12 @@ class InMemoryControllerMixin(FileControllerMixin):
     handles_entity_type: ClassVar[bool] = False
 
     def get(self) -> IO:
-        self._stream.seek(0)
-        return self._stream
+        self.stream.seek(0)
+        return self.stream
 
     def put(self, file: IO, **kwargs: Dict[str, Any]) -> None:
-        self._stream = BytesIO()
-        shutil.copyfileobj(file, self._stream)
-        self._stream.seek(0)
+        shutil.copyfileobj(file, self.stream)
+        self.stream.seek(0)
 
 
 class RemoteFileControllerMixin(FileControllerMixin):
