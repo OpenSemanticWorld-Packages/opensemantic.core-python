@@ -335,6 +335,7 @@ class NumberProperty(OswBaseModel):
                 "recommended",
                 "array",
             ],
+            "options": {"copy_ignore": ["uuid"]},
             "title": "NumberProperty",
             "title*": {"de": "Zahlenwert-Attribut"},
             "description": "Attribute for numerical values (integers or decimals)",
@@ -566,6 +567,7 @@ class TextProperty(OswBaseModel):
                 "recommended",
                 "array",
             ],
+            "options": {"copy_ignore": ["uuid"]},
             "title": "TextProperty",
             "title*": {"de": "Text-Attribut"},
             "description": "Attribute for textual values",
@@ -790,6 +792,7 @@ class BooleanProperty(OswBaseModel):
                 "recommended",
                 "array",
             ],
+            "options": {"copy_ignore": ["uuid"]},
             "title": "BooleanProperty",
             "title*": {"de": "Wahrheitswert-Attribut"},
             "description": "Attribute for true/false values",
@@ -950,6 +953,7 @@ class LinkProperty(OswBaseModel):
                 "array",
                 "range",
             ],
+            "options": {"copy_ignore": ["uuid"]},
             "title": "LinkProperty",
             "title*": {"de": "Verweis-Attribut"},
             "description": "Attribute that links to another entity via autocomplete",
@@ -1130,6 +1134,7 @@ class ComplexProperty(OswBaseModel):
                 "recommended",
                 "array",
             ],
+            "options": {"copy_ignore": ["uuid"]},
             "title": "ComplexProperty",
             "title*": {"en": "Complex property", "de": "Komplexes Attribut"},
             "description": "Attribute that contains a subobject, defined by another characteristic type or class",
@@ -1277,6 +1282,24 @@ class ComplexProperty(OswBaseModel):
     )
     """
     The characteristic or class defining the object this property points to
+    """
+    default_unit: str | None = Field(
+        None,
+        description_={
+            "de": "Überschreibt die Standard-Anzeigeeinheit der referenzierten Charakteristik (nur relevant für mengenbasierte Charakteristiken)"
+        },
+        field_comment="Query finds units via the characteristic's SubClassOf chain to the fundamental quantity. Returns empty for non-quantity characteristics (self-guarding).",
+        options={
+            "autocomplete": {
+                "query": "[[-HasUnit.-HasQuantity::{{$(characteristic_w)}}]][[HasSymbol::like:*{{_user_input}}*]]OR[[-HasUnit.-HasQuantity.-SubClassOf::{{$(characteristic_w)}}]][[HasSymbol::like:*{{_user_input}}*]]OR[[-HasUnit.-HasQuantity.-SubClassOf.-SubClassOf::{{$(characteristic_w)}}]][[HasSymbol::like:*{{_user_input}}*]]OR[[-HasUnit.-HasQuantity.-SubClassOf.-SubClassOf.-SubClassOf::{{$(characteristic_w)}}]][[HasSymbol::like:*{{_user_input}}*]]|?HasSymbol=label"
+            }
+        },
+        title="Default unit override",
+        title_={"de": "Standard-Einheit (Überschreibung)"},
+        watch={"characteristic_w": "own_property.characteristic"},
+    )
+    """
+    Override the default display unit of the referenced characteristic (only relevant for quantity-based characteristics)
     """
 
 
@@ -2014,6 +2037,7 @@ class CharacteristicType(Entity):
                         "@type": "@id",
                     },
                     "properties": {"@id": "Property:HasProperty", "@type": "@id"},
+                    "metaclass": {"@id": "Property:HasMetaCategory", "@type": "@id"},
                 },
                 "/wiki/Category:Entity?action=raw&slot=jsonschema",
             ],
@@ -2047,7 +2071,13 @@ class CharacteristicType(Entity):
     """
     Parent class(es)
     """
-    label: list[Label] = Field(..., propertyOrder=-1009)
+    label: list[Label] = Field(..., propertyOrder=-1008)
+    metaclass: list[str] | None = Field(
+        None,
+        propertyOrder=-1007,
+        title="Metaclasses/-categories",
+        title_={"de": "Metaklassen/-kategorien"},
+    )
     characteristics: list[CharacteristicType] | None = Field(
         None,
         description_={
@@ -2077,16 +2107,17 @@ class CharacteristicType(Entity):
         | None
     ) = Field(
         None,
-        description_={
-            "de": "Attribute die zusätzlich zu den durch Elternklassen und importierte Charakteristiken geerbten Attributen definiert werden"
-        },
-        eval_template=[
+        Xeval_template=[
             {
                 "type": "mustache-wikitext",
                 "mode": "render",
                 "value": "{{=<% %>=}} <%#properties%>* <%name%> {{#if: <%rdf_property%> |({{Viewer/Link |page=<%rdf_property%>}}) }}: {{#if: <%characteristic%> |{{Viewer/Link |page=<%characteristic%>}} }} <br> <%/properties%>",
             }
         ],
+        description_={
+            "de": "Attribute die zusätzlich zu den durch Elternklassen und importierte Charakteristiken geerbten Attributen definiert werden"
+        },
+        options={"enable_array_copy": True, "array_copy_ignore": ["uuid"]},
         propertyOrder=-1009,
         title="Own properties",
         title_={"de": "Eigene Attribute"},
@@ -2318,7 +2349,6 @@ class Category(CharacteristicType):
                         "@id": "owl:equivalentClass",
                         "@type": "@id",
                     },
-                    "metaclass": {"@id": "Property:HasMetaCategory", "@type": "@id"},
                     "subclass_of": {"@id": "rdfs:subClassOf", "@type": "@id"},
                     "subclass_of*": {"@id": "Property:SubClassOf", "@type": "@id"},
                     "version": "owl:versionInfo",
@@ -2357,12 +2387,6 @@ class Category(CharacteristicType):
         propertyOrder=-1009,
         title="Supercategories",
         title_={"de": "Überkategorien"},
-    )
-    metaclass: list[str] | None = Field(
-        None,
-        propertyOrder=-1008,
-        title="Metaclasses/-categories",
-        title_={"de": "Metaklassen/-kategorien"},
     )
     utf8_icon: list[constr(min_length=1, max_length=2)] | None = Field(
         None,
@@ -3126,14 +3150,15 @@ class File(Data):
                         "@id": "Property:HasEditingContext",
                         "@type": "@id",
                     },
-                    "local_path": {"@id": "Property:HasLocalPath", "@type": "@id"},
+                    "spdx": "http://spdx.org/rdf/terms#",
+                    "checksum": {"@id": "spdx:checksum"},
                 },
             ],
             "uuid": "ff333fd3-49af-4f65-a691-00405a9e60c7",
             "title*": {"en": "File", "de": "Datei"},
             "description": "",
             "description*": {},
-            "defaultProperties": ["local_path"],
+            "defaultProperties": [],
         }
 
     type: list[str] | None = ["Category:OSWff333fd349af4f65a69100405a9e60c7"]
@@ -3145,14 +3170,16 @@ class File(Data):
     editing_context: list[str] | None = Field(
         None, title="Editing Context", title_={"de": "Bearbeitungskontext"}
     )
-    local_path: str | None = Field(
+    checksum: str | None = Field(
         None,
-        description_={"de": "Der Pfad einer lokalen Datei, z.B. S:...."},
-        title="Local Path",
-        title_={"de": "Lokaler Dateipfad"},
+        description_={
+            "de": "Prüfsumme des Dateiinhalts, dient der Erkennung identischer Bytes"
+        },
+        title="Checksum",
+        title_={"de": "Prüfsumme"},
     )
     """
-    The local file path of a file, e.g. S:....
+    Checksum of the file content, used to identify identical bytes
     """
 
 
@@ -3168,16 +3195,27 @@ class LocalFile(File):
     class Config:
         schema_extra = {
             "@context": [
-                "/wiki/Category:OSWff333fd349af4f65a69100405a9e60c7?action=raw&slot=jsonschema"
+                "/wiki/Category:OSWff333fd349af4f65a69100405a9e60c7?action=raw&slot=jsonschema",
+                {"local_path": {"@id": "Property:HasLocalPath", "@type": "@id"}},
             ],
             "uuid": "3e3f5dd4-f718-42fb-b8f2-70e511af8031",
             "title": "LocalFile",
             "title*": {"en": "Local File"},
             "description": "A file stored on a local file system",
             "description*": {"en": "A file stored on a local file system"},
+            "defaultProperties": ["local_path"],
         }
 
     type: list[str] | None = ["Category:OSW3e3f5dd4f71842fbb8f270e511af8031"]
+    local_path: str | None = Field(
+        None,
+        description_={"de": "Der Pfad einer lokalen Datei, z.B. S:...."},
+        title="Local Path",
+        title_={"de": "Lokaler Dateipfad"},
+    )
+    """
+    The local file path of a file, e.g. S:....
+    """
 
 
 # generated by datamodel-codegen:
@@ -3192,7 +3230,12 @@ class RemoteFile(File):
     class Config:
         schema_extra = {
             "@context": [
-                "/wiki/Category:OSWff333fd349af4f65a69100405a9e60c7?action=raw&slot=jsonschema"
+                "/wiki/Category:OSWff333fd349af4f65a69100405a9e60c7?action=raw&slot=jsonschema",
+                {
+                    "dcat": "http://www.w3.org/ns/dcat#",
+                    "download_url": {"@id": "dcat:downloadURL", "@type": "@id"},
+                    "access_url": {"@id": "dcat:accessURL", "@type": "@id"},
+                },
             ],
             "uuid": "05b244d0-a669-436e-96fe-4e1631d5a171",
             "title": "RemoteFile",
@@ -3201,9 +3244,28 @@ class RemoteFile(File):
             "description*": {
                 "en": "A file stored on a remote location, e. g. on a web server"
             },
+            "defaultProperties": ["download_url"],
         }
 
     type: list[str] | None = ["Category:OSW05b244d0a669436e96fe4e1631d5a171"]
+    download_url: str | None = Field(
+        None,
+        description_={"de": "Direkte URL des Dateiinhalts"},
+        title="Download URL",
+        title_={"de": "Download-URL"},
+    )
+    """
+    Direct URL of the file content
+    """
+    access_url: str | None = Field(
+        None,
+        description_={"de": "Seite, über die die Datei indirekt erreichbar ist"},
+        title="Access URL",
+        title_={"de": "Zugriffs-URL"},
+    )
+    """
+    Landing page through which the file is reached indirectly
+    """
 
 
 # generated by datamodel-codegen:
@@ -3309,7 +3371,7 @@ class AnnotationProperty(Property):
             "description*": {"en": "To annotate classes and individuals"},
         }
 
-    property_type: str | None = "Text"
+    property_type: DataType | None = DataType.Text
     type: list[str] | None = ["Category:AnnotationProperty"]
 
 
@@ -3332,7 +3394,7 @@ class DataProperty(Property):
             "description*": {},
         }
 
-    property_type: str | None = "Text"
+    property_type: DataType | None = DataType.Text
     type: list[str] | None = ["Category:DataProperty"]
 
 
@@ -3563,19 +3625,31 @@ class SubQuantityProperty(QuantityProperty):
 
     subproperty_of: list[QuantityProperty] | None = Field(
         None,
+        description_={
+            "de": "Die direkte Eltern-Messgröße in der Hierarchie von Messgrößen zu der sich dieses Property rechnen lässt."
+        },
         range="Category:QuantityProperty",
         title="Subquantity of",
         title_={"de": "Untergröße von"},
         x_oold_required_iri=True,
     )
+    """
+    The direct parent quantity within the hierarchy of quantities that this property belongs to.
+    """
     base_property: str = Field(
         ...,
+        description_={
+            "de": "Die allgemeinste Messgröße in der Hierarchie von Messgrößen zu der sich dieses Property rechnen lässt."
+        },
         options={
             "autocomplete": {"category": "Category:OSW1b15ddcf042c4599bd9d431cbfdf3430"}
         },
         title="Base quantity",
         title_={"de": "Hauptgröße"},
     )
+    """
+    Most general quantity within the hierarchy of quantities that this property belongs to.
+    """
     display_units: set[str] | None = Field(
         None,
         min_items=1,
