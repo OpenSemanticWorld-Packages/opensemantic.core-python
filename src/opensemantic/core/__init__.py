@@ -9,4 +9,14 @@ except PackageNotFoundError:  # pragma: no cover
 finally:
     del version, PackageNotFoundError
 
+# Imported for the side effect of registering the controllers, so a caller that
+# only holds a file entity can find them through get_file_controller.
+from opensemantic.core._file_controller import (  # noqa: E402,F401
+    FileController,
+    FileControllerMixin,
+    InMemoryController,
+    LocalFileController,
+    RemoteFileController,
+    get_file_controller,
+)
 from opensemantic.core._model import *  # noqa
