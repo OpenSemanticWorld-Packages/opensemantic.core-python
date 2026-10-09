@@ -18,8 +18,23 @@ from pathlib import Path
 from typing import IO, Any, ClassVar, Dict, Optional
 
 from oold.model import BaseController
-from oold.model import get_registered_controller_types as _v2_controllers
-from oold.model.v1 import get_registered_controller_types as _v1_controllers
+
+try:
+    from oold.model import get_registered_controller_types as _v2_controllers
+except ImportError:  # oold without the public lookup
+    from oold.model import _controller_types as _v2_registry
+
+    def _v2_controllers(iri):
+        return list(_v2_registry.get(iri, []))
+
+
+try:
+    from oold.model.v1 import get_registered_controller_types as _v1_controllers
+except ImportError:  # oold without the public lookup
+    from oold.model.v1 import _controller_types as _v1_registry
+
+    def _v1_controllers(iri):
+        return list(_v1_registry.get(iri, []))
 
 
 class FileControllerMixin(BaseController):
