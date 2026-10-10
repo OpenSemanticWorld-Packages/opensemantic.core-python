@@ -200,6 +200,9 @@ def get_file_controller(file, **kwargs) -> Optional[FileControllerMixin]:
     """
     if isinstance(file, FileControllerMixin):
         return file
+    # A controller from elsewhere answers to get/put without sharing the mixin.
+    if callable(getattr(file, "get", None)) and callable(getattr(file, "put", None)):
+        return file
     type_iris = getattr(file, "type", None) or []
     if isinstance(type_iris, str):
         type_iris = [type_iris]
