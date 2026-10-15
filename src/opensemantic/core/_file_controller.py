@@ -58,3 +58,11 @@ class RemoteFileController(RemoteFileControllerMixin, _RemoteFile):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     label: Optional[List[_Label]] = [_Label(text="Unnamed file")]
+
+
+# A controller stands in for the model it implements: code that holds a
+# ``LocalFile`` can read it, not only describe it. The controller is a subclass,
+# so ``isinstance`` against the model still holds and ``to_json()`` still emits
+# the pure model - only what the name constructs changes.
+LocalFile = LocalFileController
+RemoteFile = RemoteFileController

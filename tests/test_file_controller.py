@@ -362,3 +362,18 @@ def test_resolve_path_without_a_file_fails_clearly(mod):
     controller = mod.LocalFileController(label=[mod.Label(text="No path")])
     with pytest.raises(ValueError, match="local_path"):
         controller.resolve_path()
+
+
+def test_the_model_name_resolves_to_its_controller(mod):
+    """A LocalFile a caller constructs is readable, not only describable."""
+    pure = importlib.import_module(f"{mod.__name__}._model").LocalFile
+
+    entity = mod.LocalFile(label=[mod.Label(text="A")], local_path="/tmp/a.bin")
+
+    assert isinstance(entity, mod.LocalFileController)
+    assert callable(entity.get) and callable(entity.put)
+    # still the model it implements, so an annotation against it still matches
+    assert isinstance(entity, pure)
+    assert mod.LocalFile is not pure
+    # and still serialized as the model, without controller-only fields
+    assert "local_path" in entity.to_json()
