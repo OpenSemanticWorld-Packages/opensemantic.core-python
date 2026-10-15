@@ -12,7 +12,7 @@ Run from the package root::
 
 from pathlib import Path
 
-from opensemantic.core import Label, LocalFile, RemoteFile, get_file_controller
+from opensemantic.core import Label, LocalFile, RemoteFile
 
 CSV_URL = (
     "https://raw.githubusercontent.com/w3c/csvw/refs/heads/gh-pages/"
@@ -38,11 +38,6 @@ def main() -> None:
     local = LocalFile(label=[Label(text=TARGET.name)], local_path=str(TARGET))
     local.put_from(source)
     print(f"Wrote {TARGET.stat().st_size} bytes to {TARGET}")
-
-    # 3. A caller that does not know which kind of file it holds asks the
-    #    registry instead. That is how a Dataset reads a distribution whose
-    #    file may be local, remote or a wiki page.
-    print(f"get_file_controller -> {type(get_file_controller(local)).__name__}")
 
 
 if __name__ == "__main__":
