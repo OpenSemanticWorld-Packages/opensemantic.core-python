@@ -13,28 +13,14 @@ materialize a file whose controller lives elsewhere.
 
 import shutil
 from abc import abstractmethod
-from io import TextIOBase
+from io import BytesIO, TextIOBase
 from pathlib import Path
-from typing import IO, Any, ClassVar, Dict, Optional
+from typing import IO, Any, Dict, Optional
+from urllib.parse import urlsplit
 
 from oold.model import BaseController
-
-try:
-    from oold.model import get_registered_controller_types as _v2_controllers
-except ImportError:  # oold without the public lookup
-    from oold.model import _controller_types as _v2_registry
-
-    def _v2_controllers(iri):
-        return list(_v2_registry.get(iri, []))
-
-
-try:
-    from oold.model.v1 import get_registered_controller_types as _v1_controllers
-except ImportError:  # oold without the public lookup
-    from oold.model.v1 import _controller_types as _v1_registry
-
-    def _v1_controllers(iri):
-        return list(_v1_registry.get(iri, []))
+from oold.model import find_controller_type as _v2_find_controller
+from oold.model.v1 import find_controller_type as _v1_find_controller
 
 
 class FileControllerMixin(BaseController):
@@ -43,11 +29,6 @@ class FileControllerMixin(BaseController):
     Implementations provide ``get`` and ``put``; the transfer helpers are
     defined in terms of those, so any two implementations can exchange content.
     """
-
-    handles_entity_type: ClassVar[bool] = True
-    """Whether :func:`get_file_controller` may pick this controller for an
-    entity of its type. Utility controllers that reuse a model without being
-    its natural handler set this to False."""
 
     @abstractmethod
     def get(self) -> IO:
@@ -128,18 +109,31 @@ class LocalFileControllerMixin(FileControllerMixin):
 class InMemoryControllerMixin(FileControllerMixin):
     """File content held in memory, for tests and intermediate transfers.
 
-    Reuses the local file model without being the handler for it, so the
-    registry lookup keeps returning the controller that reads ``local_path``.
+    Reuses the local file model without being the handler for it: it is
+    requested explicitly, ``InMemoryController(local_file)``, and stays out of
+    the registry so the lookup keeps returning the controller that reads
+    ``local_path``.
     """
 
-    handles_entity_type: ClassVar[bool] = False
+    __oold_register__ = False
 
     def get(self) -> IO:
-        self.stream.seek(0)
-        return self.stream
+        """A reader over the content, independent of the buffer.
+
+        The caller closes what ``get`` returns - the mixin's own ``put_from``
+        and ``get_to`` do, and so does base's ``materialize_data``. Handing out
+        the live buffer would make the first read the last one.
+        """
+        return BytesIO(self.stream.getvalue())
 
     def put(self, file: IO, **kwargs: Dict[str, Any]) -> None:
-        shutil.copyfileobj(file, self.stream)
+        """Replace the content, as writing to a file would."""
+        data = file.read()
+        if isinstance(data, str):
+            data = data.encode()
+        self.stream.seek(0)
+        self.stream.truncate(0)
+        self.stream.write(data)
         self.stream.seek(0)
 
 
@@ -163,7 +157,8 @@ class RemoteFileControllerMixin(FileControllerMixin):
         from urllib.request import urlopen
 
         url = self._url()
-        if not url.startswith(("http:", "https:")):
+        # RFC 3986 says the scheme is case-insensitive; urlsplit normalizes it
+        if urlsplit(url).scheme not in ("http", "https"):
             raise ValueError(f"Unsupported URL scheme: {url}")
         return urlopen(url)  # noqa: S310 - scheme checked above
 
@@ -177,6 +172,25 @@ class RemoteFileControllerMixin(FileControllerMixin):
             f"{type(self).__name__} cannot upload; use a controller for the "
             "protocol of this file"
         )
+
+
+def _is_v1(obj) -> bool:
+    """Whether the entity is a pydantic v1 model."""
+    from pydantic.v1 import BaseModel as BaseModelV1
+
+    return isinstance(obj, BaseModelV1)
+
+
+def _apply(controller, kwargs: Dict[str, Any]):
+    """Set the requested attributes on an already-built controller.
+
+    The caller passes what the controller needs to work - a session, a set of
+    credentials. Rebuilding it instead would drop whatever runtime state it
+    already carries, so the attributes go onto the instance it handed in.
+    """
+    for name, value in kwargs.items():
+        setattr(controller, name, value)
+    return controller
 
 
 def get_file_controller(file, **kwargs) -> Optional[FileControllerMixin]:
@@ -199,29 +213,19 @@ def get_file_controller(file, **kwargs) -> Optional[FileControllerMixin]:
         registered file controller
     """
     if isinstance(file, FileControllerMixin):
-        return file
+        return _apply(file, kwargs)
     # A controller from elsewhere answers to get/put without sharing the mixin.
     if callable(getattr(file, "get", None)) and callable(getattr(file, "put", None)):
-        return file
+        return _apply(file, kwargs)
     type_iris = getattr(file, "type", None) or []
     if isinstance(type_iris, str):
         type_iris = [type_iris]
 
-    fallback = None
-    for iri in type_iris:
-        # The pydantic v1 and v2 models keep separate registries, so both are
-        # consulted. Later registrations win, so a downstream package overrides
-        # an implementation by importing its own controller for the same type.
-        candidates = _v2_controllers(iri) + _v1_controllers(iri)
-        for cls in reversed(candidates):
-            if not (issubclass(cls, FileControllerMixin) and cls.handles_entity_type):
-                continue
-            # The v1 and v2 models share their type IRIs, so prefer the
-            # controller built on the entity's own model.
-            if issubclass(cls, type(file)):
-                return file.cast(cls, **kwargs)
-            if fallback is None:
-                fallback = cls
-    if fallback is None:
+    # The v1 and v2 models share their type IRIs but keep separate registries,
+    # so the entity's own layer decides which one answers. A class of the other
+    # flavour would not validate the entity's data.
+    find = _v1_find_controller if _is_v1(file) else _v2_find_controller
+    cls = find(type_iris, base=FileControllerMixin)
+    if cls is None:
         return None
-    return file.cast(fallback, **kwargs)
+    return file.cast(cls, **kwargs)

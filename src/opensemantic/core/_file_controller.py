@@ -38,7 +38,11 @@ class LocalFileController(LocalFileControllerMixin, _LocalFile):
 
 
 class InMemoryController(InMemoryControllerMixin, _LocalFile):
-    """Holds the content in memory (v2)."""
+    """Holds the content in memory (v2).
+
+    Not in the registry: a ``LocalFile`` resolves to ``LocalFileController``,
+    and this one is asked for by name, ``InMemoryController(local_file)``.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
