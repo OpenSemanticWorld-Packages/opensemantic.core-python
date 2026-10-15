@@ -97,28 +97,35 @@ class FileControllerMixin(BaseController):
 class LocalFileControllerMixin(FileControllerMixin):
     """File content stored at ``local_path``."""
 
-    @property
-    def path(self) -> Path:
+    def resolve_path(self) -> Path:
+        """``local_path`` as a ``Path``, or a readable error if it is unset.
+
+        A method, not a ``path`` property: the controller extends a model whose
+        field names come from a schema, and a property named like a field wins
+        over that field in attribute lookup, so the field's value becomes
+        unreadable. A verb cannot be mistaken for data.
+        """
         if not self.local_path:
             raise ValueError(f"{type(self).__name__} has no local_path set")
         return Path(self.local_path)
 
     def get(self) -> IO:
-        return open(self.path, "rb")
+        return open(self.resolve_path(), "rb")
 
     def put(self, file: IO, **kwargs: Dict[str, Any]) -> None:
+        target = self.resolve_path()
         if isinstance(file, TextIOBase):
             # explicit utf-8, not the locale encoding: the same text put into
             # the in-memory controller has to come out as the same bytes, or a
             # transfer between the two mangles anything outside ASCII
-            with open(self.path, "w", encoding=TEXT_ENCODING) as f:
+            with open(target, "w", encoding=TEXT_ENCODING) as f:
                 shutil.copyfileobj(file, f)
             return
-        with open(self.path, "wb") as f:
+        with open(target, "wb") as f:
             shutil.copyfileobj(file, f)
 
     def delete(self) -> None:
-        path = self.path
+        path = self.resolve_path()
         if path.exists():
             path.unlink()
 

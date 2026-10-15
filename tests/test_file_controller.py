@@ -348,3 +348,17 @@ def test_remote_downloads_into_a_local_file(mod, http_server, tmp_path):
     local = _local(mod, tmp_path / "downloaded.bin")
     local.put_from(remote)
     assert (tmp_path / "downloaded.bin").read_bytes() == CONTENT
+
+
+def test_resolve_path_is_a_method_not_a_property(mod, tmp_path):
+    """A property named like a field wins over it, hiding the field's value."""
+    controller = _local(mod, tmp_path / "a.bin")
+
+    assert controller.resolve_path() == tmp_path / "a.bin"
+    assert not isinstance(getattr(type(controller), "path", None), property)
+
+
+def test_resolve_path_without_a_file_fails_clearly(mod):
+    controller = mod.LocalFileController(label=[mod.Label(text="No path")])
+    with pytest.raises(ValueError, match="local_path"):
+        controller.resolve_path()
