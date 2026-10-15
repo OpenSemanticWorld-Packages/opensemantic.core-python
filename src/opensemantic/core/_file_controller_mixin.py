@@ -22,8 +22,16 @@ from urllib.parse import urlsplit
 from oold.model import BaseController
 from oold.model import find_controller_type as _v2_find_controller
 from oold.model.v1 import find_controller_type as _v1_find_controller
+from pydantic.v1 import BaseModel as _BaseModelV1
 
 _logger = logging.getLogger(__name__)
+
+TEXT_ENCODING = "utf-8"
+"""How a text stream is turned into the bytes a file holds.
+
+Fixed rather than taken from the locale, so the same text written through any
+of these controllers, on any machine, is the same file.
+"""
 
 
 class FileControllerMixin(BaseController):
@@ -99,8 +107,14 @@ class LocalFileControllerMixin(FileControllerMixin):
         return open(self.path, "rb")
 
     def put(self, file: IO, **kwargs: Dict[str, Any]) -> None:
-        mode = "w" if isinstance(file, TextIOBase) else "wb"
-        with open(self.path, mode) as f:
+        if isinstance(file, TextIOBase):
+            # explicit utf-8, not the locale encoding: the same text put into
+            # the in-memory controller has to come out as the same bytes, or a
+            # transfer between the two mangles anything outside ASCII
+            with open(self.path, "w", encoding=TEXT_ENCODING) as f:
+                shutil.copyfileobj(file, f)
+            return
+        with open(self.path, "wb") as f:
             shutil.copyfileobj(file, f)
 
     def delete(self) -> None:
@@ -126,14 +140,22 @@ class InMemoryControllerMixin(FileControllerMixin):
         The caller closes what ``get`` returns - the mixin's own ``put_from``
         and ``get_to`` do, and so does base's ``materialize_data``. Handing out
         the live buffer would make the first read the last one.
+
+        Bytes, whatever the buffer holds: a transfer target writes binary, and
+        a controller that answered sometimes with text and sometimes with bytes
+        would make every caller test for it.
         """
-        return BytesIO(self.stream.getvalue())
+        data = self.stream.getvalue()
+        return BytesIO(data.encode(TEXT_ENCODING) if isinstance(data, str) else data)
 
     def put(self, file: IO, **kwargs: Dict[str, Any]) -> None:
         """Replace the content, as writing to a file would."""
         data = file.read()
-        if isinstance(data, str):
-            data = data.encode()
+        text_buffer = isinstance(self.stream, TextIOBase)
+        if isinstance(data, str) and not text_buffer:
+            data = data.encode(TEXT_ENCODING)
+        elif isinstance(data, bytes) and text_buffer:
+            data = data.decode(TEXT_ENCODING)
         self.stream.seek(0)
         self.stream.truncate(0)
         self.stream.write(data)
@@ -179,19 +201,29 @@ class RemoteFileControllerMixin(FileControllerMixin):
 
 def _is_v1(obj) -> bool:
     """Whether the entity is a pydantic v1 model."""
-    from pydantic.v1 import BaseModel as BaseModelV1
+    return isinstance(obj, _BaseModelV1)
 
-    return isinstance(obj, BaseModelV1)
+
+def _declared_fields(cls) -> Optional[Dict[str, Any]]:
+    """The field map of a model class, or ``None`` if it is not one."""
+    for attribute in ("model_fields", "__fields__"):
+        fields = getattr(cls, attribute, None)
+        if isinstance(fields, dict):
+            return fields
+    return None
 
 
 def _accepted(cls, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """The kwargs ``cls`` declares as fields.
+    """The kwargs ``cls`` can take.
 
     A caller hands over what it has - a session, a set of credentials - without
-    knowing which controller will answer, so what this one does not declare is
-    not for it. Passing it on would fail construction instead.
+    knowing which controller will answer, so what a model does not declare is
+    not for it; passing it on would fail construction. A controller that is not
+    a model declares nothing, so it is given everything and decides for itself.
     """
-    fields = getattr(cls, "model_fields", None) or getattr(cls, "__fields__", {})
+    fields = _declared_fields(cls)
+    if fields is None:
+        return dict(kwargs)
     unknown = [name for name in kwargs if name not in fields]
     if unknown:
         _logger.debug("%s ignores %s", cls.__name__, ", ".join(sorted(unknown)))
@@ -199,15 +231,23 @@ def _accepted(cls, kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _apply(controller, kwargs: Dict[str, Any]):
-    """Set the requested attributes on an already-built controller.
+    """The controller with the requested attributes set.
 
-    The caller passes what the controller needs to work - a session, a set of
-    credentials. Rebuilding it instead would drop whatever runtime state it
-    already carries, so the attributes go onto the instance it handed in.
+    A model is copied rather than written to: the caller handed in a controller
+    it goes on using, and re-pointing that one at another file - or another
+    session - behind its back is not what asking for a controller means. An
+    object that is not a model cannot be copied field-wise, so it is updated in
+    place.
     """
-    for name, value in _accepted(type(controller), kwargs).items():
-        setattr(controller, name, value)
-    return controller
+    accepted = _accepted(type(controller), kwargs)
+    if not accepted:
+        return controller
+    if _declared_fields(type(controller)) is None:
+        for name, value in accepted.items():
+            setattr(controller, name, value)
+        return controller
+    copy = getattr(controller, "model_copy", None) or controller.copy
+    return copy(update=accepted)
 
 
 def get_file_controller(file, **kwargs) -> Optional[FileControllerMixin]:

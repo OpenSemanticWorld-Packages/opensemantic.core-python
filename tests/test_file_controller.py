@@ -4,11 +4,14 @@ Covers the local, in-memory and remote implementations, the transfer helpers
 between them, and the registry lookup that lets a caller materialize a file
 entity without knowing the concrete controller.
 
-The models are imported inside a fixture, not at module level: under the
-project's own ``--cov opensemantic.core`` addopts the coverage hook imports the
-package first, and importing it again at collection time raises a metaclass
-conflict. ``general_test.py`` keeps its imports inside the tests for the same
-reason.
+The models are imported inside a fixture, as ``general_test.py`` imports inside
+its tests. Both layers are imported for every case: the lookup has to pick the
+controller of the entity's own layer, and with only one layer loaded there is
+nothing in the other registry for it to pick wrongly.
+
+Run with ``--no-cov`` locally. Enabling coverage in a checkout that has several
+source trees on the path breaks the import of ``oold`` itself with a metaclass
+conflict, which has nothing to do with these tests.
 """
 
 import importlib
@@ -23,8 +26,11 @@ CONTENT = b"the file content"
 
 @pytest.fixture(params=["v2", "v1"])
 def mod(request):
-    name = "opensemantic.core" if request.param == "v2" else "opensemantic.core.v1"
-    return importlib.import_module(name)
+    # both, always: the opposing registry has to be populated for the
+    # layer-selection tests to mean anything
+    v2 = importlib.import_module("opensemantic.core")
+    v1 = importlib.import_module("opensemantic.core.v1")
+    return v1 if request.param == "v1" else v2
 
 
 def _local(mod, path, text="Test File"):
@@ -112,6 +118,19 @@ def test_in_memory_put_accepts_a_text_stream(mod):
     assert memory.get().read() == b"text content"
 
 
+def test_text_is_the_same_bytes_whichever_controller_writes_it(mod, tmp_path):
+    """A transfer between the two must not depend on the locale encoding."""
+    text = "Messgroesse äöüß"
+    local = _local(mod, tmp_path / "a.txt")
+    memory = mod.InMemoryController(label=[mod.Label(text="Stream")])
+
+    local.put(io.StringIO(text))
+    memory.put(io.StringIO(text))
+
+    assert (tmp_path / "a.txt").read_bytes() == memory.get().read()
+    assert memory.get().read().decode("utf-8") == text
+
+
 def test_in_memory_is_a_transfer_source(mod, tmp_path):
     memory = mod.InMemoryController(label=[mod.Label(text="Stream")])
     memory.put(io.BytesIO(CONTENT))
@@ -197,9 +216,22 @@ def test_lookup_applies_kwargs_when_building(mod, tmp_path):
 def test_lookup_applies_kwargs_to_a_controller_it_was_given(mod, tmp_path):
     """The path that has to carry a session or credentials."""
     controller = _local(mod, tmp_path / "a.bin")
-    same = mod.get_file_controller(controller, local_path=str(tmp_path / "b.bin"))
-    assert same is controller
-    assert controller.local_path == str(tmp_path / "b.bin")
+
+    updated = mod.get_file_controller(controller, local_path=str(tmp_path / "b.bin"))
+
+    assert updated.local_path == str(tmp_path / "b.bin")
+    # the caller keeps the controller it handed in, pointing where it did
+    assert controller.local_path == str(tmp_path / "a.bin")
+
+
+def test_lookup_drops_a_kwarg_the_controller_does_not_declare(mod, tmp_path):
+    """A caller offers what it has without knowing which controller answers."""
+    entity = mod.LocalFile(label=[mod.Label(text="A")], local_path=str(tmp_path / "a"))
+
+    controller = mod.get_file_controller(entity, osw="SESSION")
+
+    assert isinstance(controller, mod.LocalFileController)
+    assert not hasattr(controller, "osw")
 
 
 def test_lookup_accepts_a_foreign_controller(mod):
@@ -216,6 +248,23 @@ def test_lookup_accepts_a_foreign_controller(mod):
 
     foreign = Foreign()
     assert mod.get_file_controller(foreign) is foreign
+
+
+def test_lookup_hands_a_foreign_controller_everything_it_was_given(mod):
+    """It declares no fields, so nothing can be filtered out for it."""
+
+    class Foreign:
+        type = ["Category:OSWSomethingElse"]
+
+        def get(self):
+            return io.BytesIO(CONTENT)
+
+        def put(self, file, **kwargs):
+            pass
+
+    foreign = mod.get_file_controller(Foreign(), osw="SESSION")
+
+    assert foreign.osw == "SESSION"
 
 
 # -- remote --
