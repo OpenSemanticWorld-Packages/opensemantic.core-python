@@ -11,6 +11,7 @@ controller, so a package that only depends on ``opensemantic.core`` can still
 materialize a file whose controller lives elsewhere.
 """
 
+import logging
 import shutil
 from abc import abstractmethod
 from io import BytesIO, TextIOBase
@@ -21,6 +22,8 @@ from urllib.parse import urlsplit
 from oold.model import BaseController
 from oold.model import find_controller_type as _v2_find_controller
 from oold.model.v1 import find_controller_type as _v1_find_controller
+
+_logger = logging.getLogger(__name__)
 
 
 class FileControllerMixin(BaseController):
@@ -181,6 +184,20 @@ def _is_v1(obj) -> bool:
     return isinstance(obj, BaseModelV1)
 
 
+def _accepted(cls, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """The kwargs ``cls`` declares as fields.
+
+    A caller hands over what it has - a session, a set of credentials - without
+    knowing which controller will answer, so what this one does not declare is
+    not for it. Passing it on would fail construction instead.
+    """
+    fields = getattr(cls, "model_fields", None) or getattr(cls, "__fields__", {})
+    unknown = [name for name in kwargs if name not in fields]
+    if unknown:
+        _logger.debug("%s ignores %s", cls.__name__, ", ".join(sorted(unknown)))
+    return {name: value for name, value in kwargs.items() if name in fields}
+
+
 def _apply(controller, kwargs: Dict[str, Any]):
     """Set the requested attributes on an already-built controller.
 
@@ -188,7 +205,7 @@ def _apply(controller, kwargs: Dict[str, Any]):
     credentials. Rebuilding it instead would drop whatever runtime state it
     already carries, so the attributes go onto the instance it handed in.
     """
-    for name, value in kwargs.items():
+    for name, value in _accepted(type(controller), kwargs).items():
         setattr(controller, name, value)
     return controller
 
@@ -228,4 +245,4 @@ def get_file_controller(file, **kwargs) -> Optional[FileControllerMixin]:
     cls = find(type_iris, base=FileControllerMixin)
     if cls is None:
         return None
-    return file.cast(cls, **kwargs)
+    return file.cast(cls, **_accepted(cls, kwargs))
