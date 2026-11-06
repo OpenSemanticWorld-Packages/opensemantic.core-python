@@ -41,6 +41,24 @@ class FileControllerMixin(BaseController):
     defined in terms of those, so any two implementations can exchange content.
     """
 
+    @property
+    def uri(self) -> Optional[str]:
+        """The location of the file, in the URI scheme of its storage backend.
+
+        Derived on every access and never stored, so it cannot go stale and is
+        not part of the serialized model. Each controller keeps the handle its
+        backend needs, e.g. ``local_path``, and answers here in its own scheme.
+
+        Not abstract on purpose. pydantic v1's ``ModelMetaclass`` extends
+        ``ABCMeta``, so an abstract property would stop every file controller
+        outside this package that predates it from being instantiated.
+
+        Returns
+        -------
+            the URI, or ``None`` if the controller names no location
+        """
+        return None
+
     @abstractmethod
     def get(self) -> IO:
         """Read or download the file.
@@ -109,6 +127,16 @@ class LocalFileControllerMixin(FileControllerMixin):
             raise ValueError(f"{type(self).__name__} has no local_path set")
         return Path(self.local_path)
 
+    @property
+    def uri(self) -> Optional[str]:
+        """The file URI of the path, ``None`` if ``local_path`` is unset.
+
+        See https://en.wikipedia.org/wiki/File_URI_scheme
+        """
+        if not self.local_path:
+            return None
+        return self.resolve_path().absolute().as_uri()
+
     def get(self) -> IO:
         return open(self.resolve_path(), "rb")
 
@@ -140,6 +168,11 @@ class InMemoryControllerMixin(FileControllerMixin):
     """
 
     __oold_register__ = False
+
+    @property
+    def uri(self) -> None:
+        """``None``, a stream in memory has no location to address."""
+        return None
 
     def get(self) -> IO:
         """A reader over the content, independent of the buffer.
@@ -184,6 +217,14 @@ class RemoteFileControllerMixin(FileControllerMixin):
                 f"{type(self).__name__} has neither download_url nor access_url set"
             )
         return url
+
+    @property
+    def uri(self) -> Optional[str]:
+        """The URL the file is downloaded from, ``None`` if none is set."""
+        try:
+            return self._url()
+        except ValueError:
+            return None
 
     def get(self) -> IO:
         from urllib.request import urlopen
